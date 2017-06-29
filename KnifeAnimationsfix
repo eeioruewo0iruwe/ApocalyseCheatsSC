@@ -1,0 +1,233 @@
+Skins1.h ||
+
+#pragma once
+
+#include "ClientRecvProps.h"
+
+extern RecvVarProxyFn fnSequenceProxyFn;
+
+#define SEQUENCE_DEFAULT_DRAW 0
+#define SEQUENCE_DEFAULT_IDLE1 1
+#define SEQUENCE_DEFAULT_IDLE2 2
+#define SEQUENCE_DEFAULT_LIGHT_MISS1 3
+#define SEQUENCE_DEFAULT_LIGHT_MISS2 4
+#define SEQUENCE_DEFAULT_HEAVY_MISS1 9
+#define SEQUENCE_DEFAULT_HEAVY_HIT1 10
+#define SEQUENCE_DEFAULT_HEAVY_BACKSTAB 11
+#define SEQUENCE_DEFAULT_LOOKAT01 12
+
+#define SEQUENCE_BUTTERFLY_DRAW 0
+#define SEQUENCE_BUTTERFLY_DRAW2 1
+#define SEQUENCE_BUTTERFLY_LOOKAT01 13
+#define SEQUENCE_BUTTERFLY_LOOKAT03 15
+
+#define SEQUENCE_FALCHION_IDLE1 1
+#define SEQUENCE_FALCHION_HEAVY_MISS1 8
+#define SEQUENCE_FALCHION_HEAVY_MISS1_NOFLIP 9
+#define SEQUENCE_FALCHION_LOOKAT01 12
+#define SEQUENCE_FALCHION_LOOKAT02 13
+
+#define SEQUENCE_DAGGERS_IDLE1 1
+#define SEQUENCE_DAGGERS_LIGHT_MISS1 2
+#define SEQUENCE_DAGGERS_LIGHT_MISS5 6
+#define SEQUENCE_DAGGERS_HEAVY_MISS2 11
+#define SEQUENCE_DAGGERS_HEAVY_MISS1 12
+
+#define SEQUENCE_BOWIE_IDLE1 1
+
+#define	LIFE_ALIVE 0
+
+#define RandomInt(nMin, nMax) (rand() % (nMax - nMin + 1) + nMin);
+
+extern void SetViewModelSequence(const CRecvProxyData *pDataConst, void *pStruct, void *pOut);
+
+Proxies.h ||
+
+#pragma once
+#include "Skins1.h"
+#include "Entities.h"
+#include "Interfaces.h"
+#include "ClientRecvProps.h"
+
+// Store the original proxy functions.
+RecvVarProxyFn fnSequenceProxyFn = NULL;
+
+// Function to fix sequences for certain models.
+void SetViewModelSequence(const CRecvProxyData *pDataConst, void *pStruct, void *pOut) {
+	// Make the incoming data editable.
+	CRecvProxyData* pData = const_cast<CRecvProxyData*>(pDataConst);
+
+	// Confirm that we are replacing our view model and not someone elses.
+	CBaseViewModel* pViewModel = (CBaseViewModel*)pStruct;
+
+	if (pViewModel) {
+		IClientEntity* pOwner = Interfaces::EntList->GetClientEntityFromHandle(HANDLE(pViewModel->GetOwner()));
+
+		// Compare the owner entity of this view model to the local player entity.
+		if (pOwner && pOwner->GetIndex() == Interfaces::Engine->GetLocalPlayer()) {
+			// Get the filename of the current view model.
+			void* pModel = Interfaces::ModelInfo->GetModel(pViewModel->GetModelIndex());
+			const char* szModel = Interfaces::ModelInfo->GetModelName(pModel);
+
+			// Store the current sequence.
+			int m_nSequence = pData->m_Value.m_Int;
+
+			if (!strcmp(szModel, "models/weapons/v_knife_butterfly.mdl")) {
+				// Fix animations for the Butterfly Knife.
+				switch (m_nSequence) {
+				case SEQUENCE_DEFAULT_DRAW:
+					m_nSequence = RandomInt(SEQUENCE_BUTTERFLY_DRAW, SEQUENCE_BUTTERFLY_DRAW2); break;
+				case SEQUENCE_DEFAULT_LOOKAT01:
+					m_nSequence = RandomInt(SEQUENCE_BUTTERFLY_LOOKAT01, SEQUENCE_BUTTERFLY_LOOKAT03); break;
+				default:
+					m_nSequence++;
+				}
+			}
+			else if (!strcmp(szModel, "models/weapons/v_knife_falchion_advanced.mdl")) {
+				// Fix animations for the Falchion Knife.
+				switch (m_nSequence) {
+				case SEQUENCE_DEFAULT_IDLE2:
+					m_nSequence = SEQUENCE_FALCHION_IDLE1; break;
+				case SEQUENCE_DEFAULT_HEAVY_MISS1:
+					m_nSequence = RandomInt(SEQUENCE_FALCHION_HEAVY_MISS1, SEQUENCE_FALCHION_HEAVY_MISS1_NOFLIP); break;
+				case SEQUENCE_DEFAULT_LOOKAT01:
+					m_nSequence = RandomInt(SEQUENCE_FALCHION_LOOKAT01, SEQUENCE_FALCHION_LOOKAT02); break;
+				case SEQUENCE_DEFAULT_DRAW:
+				case SEQUENCE_DEFAULT_IDLE1:
+					break;
+				default:
+					m_nSequence--;
+				}
+			}
+			else if (!strcmp(szModel, "models/weapons/v_knife_push.mdl")) {
+				// Fix animations for the Shadow Daggers.
+				switch (m_nSequence) {
+				case SEQUENCE_DEFAULT_IDLE2:
+					m_nSequence = SEQUENCE_DAGGERS_IDLE1; break;
+				case SEQUENCE_DEFAULT_LIGHT_MISS1:
+				case SEQUENCE_DEFAULT_LIGHT_MISS2:
+					m_nSequence = RandomInt(SEQUENCE_DAGGERS_LIGHT_MISS1, SEQUENCE_DAGGERS_LIGHT_MISS5); break;
+				case SEQUENCE_DEFAULT_HEAVY_MISS1:
+					m_nSequence = RandomInt(SEQUENCE_DAGGERS_HEAVY_MISS2, SEQUENCE_DAGGERS_HEAVY_MISS1); break;
+				case SEQUENCE_DEFAULT_HEAVY_HIT1:
+				case SEQUENCE_DEFAULT_HEAVY_BACKSTAB:
+				case SEQUENCE_DEFAULT_LOOKAT01:
+					m_nSequence += 3; break;
+				case SEQUENCE_DEFAULT_DRAW:
+				case SEQUENCE_DEFAULT_IDLE1:
+					break;
+				default:
+					m_nSequence += 2;
+				}
+			}
+			else if (!strcmp(szModel, "models/weapons/v_knife_survival_bowie.mdl")) {
+				// Fix animations for the Bowie Knife.
+				switch (m_nSequence) {
+				case SEQUENCE_DEFAULT_DRAW:
+				case SEQUENCE_DEFAULT_IDLE1:
+					break;
+				case SEQUENCE_DEFAULT_IDLE2:
+					m_nSequence = SEQUENCE_BOWIE_IDLE1; break;
+				default:
+					m_nSequence--;
+				}
+			}
+
+			// Set the fixed sequence.
+			pData->m_Value.m_Int = m_nSequence;
+		}
+	}
+
+	// Call original function with the modified data.
+	fnSequenceProxyFn(pData, pStruct, pOut);
+}
+
+AntiAntiAim.cpp ||
+
+if (!strcmp(name, "m_nModelIndex"))
+				{
+					oRecvnModelIndex = (RecvVarProxyFn)pProp->m_ProxyFn;
+					pProp->m_ProxyFn = Hooked_RecvProxy_Viewmodel;
+				}
+			}
+			for (ClientClass* pClass = Interfaces::Client->GetAllClasses(); pClass; pClass = pClass->m_pNext) {
+				if (!strcmp(pClass->m_pNetworkName, "CBaseViewModel")) {
+					// Search for the 'm_nModelIndex' property.
+					RecvTable* pClassTable = pClass->m_pRecvTable;
+
+					for (int nIndex = 0; nIndex < pClassTable->m_nProps; nIndex++) {
+						RecvProp* pProp = &pClassTable->m_pProps[nIndex];
+
+						if (!pProp || strcmp(pProp->m_pVarName, "m_nSequence"))
+							continue;
+
+						// Store the original proxy function.
+						fnSequenceProxyFn = (RecvVarProxyFn)pProp->m_ProxyFn;
+
+						// Replace the proxy function with our sequence changer.
+						pProp->m_ProxyFn = SetViewModelSequence;
+
+						break;
+					}
+
+					break;
+				}
+			}
+		}
+		pClass = pClass->m_pNext;
+	}
+}
+
+
+Entities.h
+Add this at the bottom
+
+class CBaseViewModel : public IClientUnknown, public IClientRenderable, public IClientNetworkable {
+public:
+	inline int GetModelIndex() {
+		// DT_BaseViewModel -> m_nModelIndex
+		return *(int*)((DWORD)this + 0x254);
+	}
+	inline DWORD GetOwner() {
+		// DT_BaseViewModel -> m_hOwner
+		return *(PDWORD)((DWORD)this + 0x29BC);
+	}
+	inline DWORD GetWeapon() {
+		// DT_BaseViewModel -> m_hWeapon
+		return *(PDWORD)((DWORD)this + 0x29B8);
+	}
+	inline void SetWeaponModel(const char* Filename, IClientUnknown* Weapon) {
+		return call_vfunc<void(__thiscall*)(void*, const char*, IClientUnknown*)>(this, 242)(this, Filename, Weapon);
+	}
+};
+
+Materials.h ||
+
+Replace CModelInfo with this:
+class CModelInfo
+{
+public:
+	inline void* GetModel(int Index) {
+		return GetVirtualFunction<void*(__thiscall *)(void*, int)>(this, 1)(this, Index);
+	}
+
+	int	GetModelIndex(const char *name)
+	{
+		typedef int(__thiscall* oGetModelName)(PVOID, const char *);
+		return call_vfunc< oGetModelName >(this, 2)(this, name);
+	}
+	inline const char* GetModelName(const void* Model) {
+		return GetVirtualFunction<const char*(__thiscall *)(void*, const void*)>(this, 3)(this, Model);
+	}
+
+	studiohdr_t	*GetStudiomodel(const model_t *mod)
+	{
+		typedef studiohdr_t *(__stdcall* oGetStudiomodel)(const model_t*);
+		return call_vfunc< oGetStudiomodel >(this, Offsets::VMT::ModelInfo_GetStudiomodel)(mod);
+	}
+	void GetModelMaterials(const model_t *model, int count, IMaterial** ppMaterial)
+	{
+		typedef studiohdr_t* (*oGetModelMaterials)(void*, const model_t*, int, IMaterial**);
+		call_vfunc<oGetModelMaterials>(this, 18)(this, model, count, ppMaterial);
+	}
+};
